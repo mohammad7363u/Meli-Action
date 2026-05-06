@@ -1,0 +1,209 @@
+name: YouTube Multi Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_urls:
+        description: 'YouTube URLs (comma-separated OR one per line)'
+        required: true
+        type: string
+        default: 'https://youtu.be/U2vRKl_gj78,https://youtu.be/Z1Aw6HpZjVo,https://youtu.be/qiNRKCxoDGk,https://youtu.be/SYxor82He8Q,https://youtu.be/ExlWOO8o2lc,https://youtu.be/SrX-JegN4jo,https://youtu.be/O_lWHq7aeuY'
+      output_format:
+        description: 'Output type'
+        required: true
+        type: choice
+        options:
+          - mp4 (video)
+          - mp3 (audio only)
+        default: 'mp4 (video)'
+      desired_quality:
+        description: 'Quality (video: 144p|360p|480p|720p|1080p|best; audio: 64|128|192|320kbps)'
+        required: false
+        type: string
+        default: '720p'
+      max_part_mb:
+        description: 'Max part size in MB (0 = no split)'
+        required: false
+        type: number
+        default: 2000
+      output_folder:
+        description: 'Output folder'
+        required: false
+        type: string
+        default: 'downloads'
+
+jobs:
+  download-multiple:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup yt-dlp with ffmpeg and aria2
+        uses: AnimMouse/setup-yt-dlp@v3
+
+      - name: Download all videos
+        run: |
+          python3 << 'EOF'
+          import os, sys, re, subprocess, time
+
+          urls_text = """${{ github.event.inputs.video_urls }}"""
+          fmt_raw = "${{ github.event.inputs.output_format }}"
+          fmt = "mp3" if "mp3" in fmt_raw else "mp4"
+          qual = "${{ github.event.inputs.desired_quality }}"
+          out_dir = "${{ github.event.inputs.output_folder }}"
+
+          # Parse URLs
+          urls = []
+          for line in urls_text.strip().split('\n'):
+              line = line.strip()
+              if not line:
+                  continue
+              for part in line.split(','):
+                  part = part.strip()
+                  part = re.sub(r'[?&]si=[^&]*', '', part)
+                  part = re.sub(r'[?&]pp=[^&]*', '', part)
+                  part = re.sub(r'[?&]$', '', part)
+                  if part and ('youtube.com' in part or 'youtu.be' in part):
+                      urls.append(part)
+
+          print(f"📋 Found {len(urls)} videos")
+          print(f"🎯 Format: {fmt} | Quality: {qual}")
+          print("=" * 60)
+
+          os.makedirs(out_dir, exist_ok=True)
+
+          success = 0
+          failed = []
+
+          for idx, url in enumerate(urls, 1):
+              print(f"\n{'─' * 55}")
+              print(f"📌 [{idx}/{len(urls)}] {url}")
+              
+              try:
+                  # Build yt-dlp command
+                  output_template = f"{out_dir}/%(title).100s_%(id)s_{qual}.%(ext)s"
+                  
+                  cmd = ['yt-dlp']
+                  
+                  if fmt == 'mp3':
+                      cmd.extend([
+                          '-x',
+                          '--audio-format', 'mp3',
+                          '--audio-quality', qual.replace('kbps', '')
+                      ])
+                  else:
+                      if qual == 'best':
+                          cmd.extend(['-f', 'bestvideo+bestaudio/best'])
+                      else:
+                          height = qual.replace('p', '')
+                          cmd.extend(['-f', f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best'])
+                      cmd.extend(['--merge-output-format', 'mp4'])
+                  
+                  cmd.extend([
+                      '-o', output_template,
+                      '--no-playlist',
+                      '--no-warnings',
+                      '--embed-metadata',
+                      '--embed-thumbnail' if fmt == 'mp3' else '',
+                      '--no-check-certificate',
+                      url
+                  ])
+                  
+                  # Remove empty strings
+                  cmd = [c for c in cmd if c]
+                  
+                  print(f"  ⏳ Downloading...")
+                  result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+                  
+                  if result.returncode == 0:
+                      # Find downloaded file
+                      files = sorted(os.listdir(out_dir), key=lambda x: os.path.getmtime(os.path.join(out_dir, x)), reverse=True)
+                      for f in files:
+                          fpath = os.path.join(out_dir, f)
+                          if os.path.isfile(fpath) and not f.startswith('.'):
+                              size_mb = os.path.getsize(fpath) / (1024 * 1024)
+                              print(f"  ✅ {f} ({size_mb:.1f} MB)")
+                              success += 1
+                              break
+                  else:
+                      error_msg = result.stderr.split('\n')[-3:] if result.stderr else "Unknown error"
+                      print(f"  ❌ Failed: {error_msg}")
+                      failed.append(url)
+              
+              except subprocess.TimeoutExpired:
+                  print(f"  ❌ Timeout")
+                  failed.append(url)
+              except Exception as e:
+                  print(f"  ❌ Error: {str(e)[:150]}")
+                  failed.append(url)
+              
+              time.sleep(1)
+
+          # Summary
+          print(f"\n{'=' * 60}")
+          print(f"📊 RESULTS: ✅ {success}/{len(urls)} | ❌ {len(failed)}")
+          print(f"📁 Location: {out_dir}/")
+          
+          # Save summary
+          with open(os.path.join(out_dir, "download_summary.txt"), "w") as f:
+              f.write(f"Download Summary\n{'='*50}\n")
+              f.write(f"Total: {len(urls)}\nSuccess: {success}\nFailed: {len(failed)}\n")
+              if failed:
+                  f.write(f"\nFailed URLs:\n")
+                  for u in failed:
+                      f.write(f"  - {u}\n")
+
+          sys.exit(0 if success > 0 else 1)
+          EOF
+        env:
+          PYTHONUNBUFFERED: 1
+
+      - name: Split large files
+        if: github.event.inputs.max_part_mb > 0
+        run: |
+          FOLDER="${{ github.event.inputs.output_folder }}"
+          MAX_MB=${{ github.event.inputs.max_part_mb }}
+          
+          cd "$FOLDER"
+          for f in *; do
+            [ "$f" = "download_summary.txt" ] && continue
+            [ -f "$f" ] || continue
+            
+            SIZE_MB=$(du -m "$f" | cut -f1)
+            if [ "$SIZE_MB" -gt "$MAX_MB" ]; then
+              echo "📦 Splitting $f (${SIZE_MB}MB)"
+              mkdir -p "${f}_parts"
+              split -b "${MAX_MB}M" -d "$f" "${f}_parts/${f}.part."
+              rm "$f"
+            fi
+          done
+
+      - name: Push to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          FOLDER="${{ github.event.inputs.output_folder }}"
+          FILE_COUNT=$(find "$FOLDER" -type f ! -name 'download_summary.txt' | wc -l)
+          
+          git add "$FOLDER/"
+          git commit -m "📥 Downloaded $FILE_COUNT video(s) [skip ci]" || echo "Nothing to commit"
+          git push
+
+      - name: Final stats
+        run: |
+          FOLDER="${{ github.event.inputs.output_folder }}"
+          echo ""
+          echo "╔══════════════════════════════╗"
+          echo "║   ✅ DOWNLOAD COMPLETE!     ║"
+          echo "╠══════════════════════════════╣"
+          echo "║ 📁 $FOLDER"
+          echo "║ 📊 $(find $FOLDER -type f ! -name 'download_summary.txt' | wc -l) files"
+          echo "║ 💾 $(du -sh $FOLDER | cut -f1)"
+          echo "╚══════════════════════════════╝"
