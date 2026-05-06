@@ -67,16 +67,37 @@ jobs:
             fi
           done
           
+          echo ""
           echo "دانلود $COUNT فایل تموم شد"
+          echo ""
+          echo "فایل‌های دانلود شده:"
+          ls -lah "$OUTPUT_DIR/"
           
-          # زیپ کردن همه فایل‌ها
-          cd "$OUTPUT_DIR"
-          ZIP_NAME="../youtube_${TIMESTAMP}.zip"
-          zip -r "$ZIP_NAME" .
-          cd ..
+          # بررسی وجود فایل
+          FILE_COUNT=$(ls "$OUTPUT_DIR" | wc -l)
+          echo "تعداد فایل‌ها: $FILE_COUNT"
           
-          echo "فایل زیپ: youtube_${TIMESTAMP}.zip"
-          ls -lah youtube_${TIMESTAMP}.zip
+          if [ $FILE_COUNT -gt 0 ]; then
+            # رفتن به پوشه اصلی downloads
+            cd downloads
+            
+            ZIP_NAME="youtube_${TIMESTAMP}.zip"
+            
+            # زیپ کردن پوشه حاوی فایل‌ها
+            zip -r "$ZIP_NAME" "${TIMESTAMP}/"
+            
+            echo ""
+            echo "فایل زیپ ساخته شد:"
+            ls -lah "$ZIP_NAME"
+            
+            # نمایش محتویات زیپ
+            echo ""
+            echo "محتویات فایل زیپ:"
+            unzip -l "$ZIP_NAME"
+          else
+            echo "هیچ فایلی برای زیپ وجود ندارد!"
+            exit 1
+          fi
 
       - name: ذخیره در پروژه
         run: |
