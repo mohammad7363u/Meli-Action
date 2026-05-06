@@ -1,369 +1,258 @@
-name: 📥 YouTube Downloader Pro
+name: YouTube Multi Downloader
 
 on:
   workflow_dispatch:
     inputs:
-      download_type:
-        description: '📌 Download mode'
-        required: true
-        type: choice
-        options:
-          - '🎯 Single Video'
-          - '📋 Playlist/Batch URLs'
-          - '🔍 Channel Latest Videos'
-        default: '🎯 Single Video'
-      
-      video_url:
-        description: '🔗 YouTube URL (single video, playlist, or channel)'
+      video_urls:
+        description: 'YouTube URLs (one per line)'
         required: true
         type: string
+        default: |
+          https://youtu.be/U2vRKl_gj78
+          https://youtu.be/Z1Aw6HpZjVo
+          https://youtu.be/qiNRKCxoDGk
+          https://youtu.be/SYxor82He8Q
+          https://youtu.be/ExlWOO8o2lc
+          https://youtu.be/SrX-JegN4jo
+          https://youtu.be/O_lWHq7aeuY
       
       output_format:
-        description: '📦 Output format'
+        description: 'Output type'
         required: true
         type: choice
         options:
-          - '🎬 mp4 (video)'
-          - '🎵 mp3 (audio only)'
-          - '📱 mp4 (mobile optimized)'
-          - '🖼️ thumbnail only'
-          - '📝 subtitles only'
-        default: '🎬 mp4 (video)'
+          - mp4 (video)
+          - mp3 (audio only)
+        default: 'mp4 (video)'
       
-      quality_preset:
-        description: '✨ Quality preset'
+      desired_quality:
+        description: 'Quality preset (video: 144p|360p|480p|720p|1080p; audio: 64|128|192|320kbps)'
         required: false
-        type: choice
-        options:
-          - '🔹 Best Available'
-          - '🔸 4K (2160p)'
-          - '🔸 1440p'
-          - '🔸 1080p (Full HD)'
-          - '🔹 720p (HD)'
-          - '🔹 480p'
-          - '🔹 360p'
-          - '🔹 144p'
-          - '🎧 Audio 320kbps'
-          - '🎧 Audio 192kbps'
-          - '🎧 Audio 128kbps'
-          - '🎧 Audio 64kbps'
-        default: '🔹 720p (HD)'
-      
-      max_videos:
-        description: '📊 Max videos to download (playlist/channel mode)'
-        required: false
-        type: number
-        default: 5
+        type: string
+        default: '720p'
       
       max_part_mb:
-        description: '📦 Split files larger than (MB, 0=no split)'
+        description: 'Maximum part size in MB (0 = do not split)'
         required: false
         type: number
         default: 90
       
       output_folder:
-        description: '📁 Output folder'
+        description: 'Folder to store downloaded files (relative to repo root)'
         required: false
         type: string
         default: 'downloads'
-      
-      language:
-        description: '🌍 Subtitle/Audio language preference'
-        required: false
-        type: string
-        default: 'en'
-      
-      add_metadata:
-        description: '📋 Add video metadata to description'
-        required: false
-        type: boolean
-        default: true
-      
-      create_playlist_index:
-        description: '📑 Create playlist HTML index'
-        required: false
-        type: boolean
-        default: true
-      
-      schedule_cleanup:
-        description: '🧹 Auto-delete files after (days, 0=keep forever)'
-        required: false
-        type: number
-        default: 30
 
 jobs:
-  youtube-downloader-pro:
+  download-multiple:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
-      - name: 📥 Clone repository
+      - name: Clone repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
 
-      - name: 🛠️ Setup environment
+      - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y zip curl jq python3 ffmpeg imagemagick
-          pip3 install yt-dlp requests beautifulsoup4 pillow
+          sudo apt-get install -y zip curl jq python3
 
-      - name: 📝 Parse user preferences
-        id: config
-        run: |
-          # Parse complex inputs
-          FORMAT_MAP='{"🎬 mp4 (video)":"mp4","🎵 mp3 (audio only)":"mp3","📱 mp4 (mobile optimized)":"mp4_mobile","🖼️ thumbnail only":"thumbnail","📝 subtitles only":"subtitles"}'
-          QUALITY_MAP='{"🔹 Best Available":"best","🔸 4K (2160p)":"2160p","🔸 1440p":"1440p","🔸 1080p (Full HD)":"1080p","🔹 720p (HD)":"720p","🔹 480p":"480p","🔹 360p":"360p","🔹 144p":"144p","🎧 Audio 320kbps":"320","🎧 Audio 192kbps":"192","🎧 Audio 128kbps":"128","🎧 Audio 64kbps":"64"}'
-          
-          echo "FORMAT=$(echo '${{ github.event.inputs.output_format }}' | python3 -c "import sys,json; print(json.loads('''$FORMAT_MAP''')[sys.stdin.read().strip()])")" >> $GITHUB_ENV
-          echo "QUALITY=$(echo '${{ github.event.inputs.quality_preset }}' | python3 -c "import sys,json; print(json.loads('''$QUALITY_MAP''')[sys.stdin.read().strip()])")" >> $GITHUB_ENV
-          echo "MODE=$(echo '${{ github.event.inputs.download_type }}' | grep -oP '(?<= ).*' | head -1)" >> $GITHUB_ENV
-
-      - name: 🎯 Download media (Enhanced)
+      - name: Download all videos
         id: download
         run: |
-          python3 << 'PYEOF'
-          import os, sys, json, re, subprocess
-          from datetime import datetime
-          from pathlib import Path
-          
-          URL = "${{ github.event.inputs.video_url }}"
-          FORMAT = os.environ.get('FORMAT', 'mp4')
-          QUALITY = os.environ.get('QUALITY', '720p')
-          MODE = os.environ.get('MODE', 'Single')
-          MAX_VIDEOS = int("${{ github.event.inputs.max_videos }}")
-          LANG = "${{ github.event.inputs.language }}"
-          OUT_DIR = "${{ github.event.inputs.output_folder }}"
-          ADD_METADATA = "${{ github.event.inputs.add_metadata }}" == "true"
-          CREATE_INDEX = "${{ github.event.inputs.create_playlist_index }}" == "true"
-          
-          # Create output structure
-          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-          session_dir = f"{OUT_DIR}/session_{timestamp}"
-          os.makedirs(f"{session_dir}/videos", exist_ok=True)
-          os.makedirs(f"{session_dir}/thumbnails", exist_ok=True)
-          os.makedirs(f"{session_dir}/subtitles", exist_ok=True)
-          os.makedirs(f"{session_dir}/metadata", exist_ok=True)
-          
-          # Build yt-dlp command based on format
-          cmd = ['yt-dlp', '--no-warnings', '--progress']
-          
-          # Format selection logic
-          if FORMAT == 'mp3':
-              cmd.extend(['-x', '--audio-format', 'mp3', '--audio-quality', QUALITY])
-          elif FORMAT == 'mp4_mobile':
-              cmd.extend(['-f', f'best[height<={QUALITY.replace("p","")}][ext=mp4]'])
-          elif FORMAT == 'thumbnail':
-              cmd.extend(['--write-thumbnail', '--skip-download'])
-          elif FORMAT == 'subtitles':
-              cmd.extend(['--write-sub', '--sub-lang', LANG, '--skip-download'])
+          python3 << 'EOF'
+          import os, sys, time, re, requests, urllib.parse
+
+          # Get inputs
+          urls_text = """${{ github.event.inputs.video_urls }}"""
+          fmt = "${{ github.event.inputs.output_format }}"
+          if "mp3" in fmt:
+              fmt = "mp3"
           else:
-              cmd.extend(['-f', f'best[height<={QUALITY.replace("p","")}]/best'])
+              fmt = "mp4"
           
-          # Common options
-          cmd.extend([
-              '--output', f'{session_dir}/videos/%(title).100s_%(id)s.%(ext)s',
-              '--write-info-json' if ADD_METADATA else '',
-              '--write-thumbnail',
-              '--write-sub',
-              '--sub-lang', LANG,
-              '--embed-metadata',
-              '--embed-thumbnail' if FORMAT in ['mp3', 'mp4'] else '',
-          ])
+          qual = "${{ github.event.inputs.desired_quality }}"
+          out_dir = "${{ github.event.inputs.output_folder }}"
           
-          # Remove empty strings
-          cmd = [c for c in cmd if c]
+          # Parse URLs (one per line, remove empty lines and spaces)
+          urls = []
+          for line in urls_text.strip().split('\n'):
+              line = line.strip()
+              if line and ('youtube.com' in line or 'youtu.be' in line):
+                  urls.append(line)
           
-          # Handle different modes
-          if MODE == 'Playlist':
-              cmd.extend(['--playlist-items', f'1-{MAX_VIDEOS}', URL])
-          elif MODE == 'Channel':
-              cmd.extend(['--playlist-end', str(MAX_VIDEOS), URL])
-          else:
-              cmd.append(URL)
+          print(f"📋 Found {len(urls)} videos to download")
+          print(f"🎯 Format: {fmt} | Quality: {qual}")
+          print("-" * 50)
           
-          print(f"🚀 Running: {' '.join(cmd)}")
-          result = subprocess.run(cmd, capture_output=True, text=True)
+          # Create output folder
+          os.makedirs(out_dir, exist_ok=True)
           
-          if result.returncode != 0:
-              print(f"❌ Error: {result.stderr}")
-              sys.exit(1)
+          # Download session
+          session = requests.Session()
+          session.headers.update({
+              "User-Agent": "Mozilla/5.0",
+              "Content-Type": "application/json"
+          })
           
-          # Generate metadata and index
-          if ADD_METADATA or CREATE_INDEX:
-              videos = []
-              for info_file in Path(f"{session_dir}/videos").glob("*.info.json"):
-                  with open(info_file) as f:
-                      info = json.load(f)
-                  videos.append({
-                      'title': info.get('title', 'Unknown'),
-                      'id': info.get('id', ''),
-                      'duration': info.get('duration', 0),
-                      'upload_date': info.get('upload_date', ''),
-                      'view_count': info.get('view_count', 0),
-                      'description': info.get('description', '')[:500],
-                      'file': info_file.stem.replace('.info', '')
-                  })
+          # Initialize session
+          session.get("https://media.ytmp3.gg/")
+          
+          downloaded = []
+          failed = []
+          
+          for idx, url in enumerate(urls, 1):
+              print(f"\n[{idx}/{len(urls)}] Processing: {url}")
               
-              # Save metadata
-              with open(f"{session_dir}/metadata/download_info.json", 'w') as f:
-                  json.dump({
-                      'url': URL,
-                      'timestamp': timestamp,
-                      'mode': MODE,
-                      'format': FORMAT,
-                      'quality': QUALITY,
-                      'videos': videos
-                  }, f, indent=2)
-              
-              # Create HTML index
-              if CREATE_INDEX and videos:
-                  html = f'''<!DOCTYPE html>
-          <html><head><meta charset="UTF-8">
-          <title>YouTube Download - {timestamp}</title>
-          <style>body{{font-family:Arial;margin:20px;background:#f5f5f5}}
-          .video-card{{background:white;padding:15px;margin:10px 0;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}}
-          .title{{font-size:18px;font-weight:bold;color:#333}}
-          .meta{{color:#666;font-size:14px}}</style></head><body>
-          <h1>📥 Downloaded Content</h1>
-          <p>Downloaded: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-          <p>Source: <a href="{URL}">{URL}</a></p>
-          '''
-                  for v in videos:
-                      duration = f"{v['duration']//60}:{v['duration']%60:02d}"
-                      html += f'<div class="video-card"><div class="title">🎬 {v["title"]}</div><div class="meta">⏱ {duration} | 👁 {v["view_count"]:,} | 📅 {v["upload_date"]}</div></div>'
-                  html += '</body></html>'
+              try:
+                  # Extract video ID
+                  video_id = None
+                  if 'youtu.be/' in url:
+                      video_id = url.split('youtu.be/')[1].split('?')[0]
+                  elif 'v=' in url:
+                      video_id = url.split('v=')[1].split('&')[0]
                   
-                  with open(f"{session_dir}/index.html", 'w') as f:
-                      f.write(html)
+                  if not video_id:
+                      print(f"  ❌ Could not extract video ID")
+                      failed.append(url)
+                      continue
+                  
+                  # Build request
+                  payload = {
+                      "url": url,
+                      "os": "linux",
+                      "output": {
+                          "type": "audio" if fmt == "mp3" else "video",
+                          "format": fmt
+                      }
+                  }
+                  
+                  if fmt == "mp3":
+                      payload["audio"] = {"bitrate": qual}
+                  else:
+                      payload["output"]["quality"] = qual
+                  
+                  # Submit conversion
+                  resp = session.post(
+                      "https://hub.ytconvert.org/api/download",
+                      json=payload,
+                      timeout=30
+                  )
+                  resp.raise_for_status()
+                  data = resp.json()
+                  
+                  status_url = data.get('statusUrl')
+                  title = data.get('title', 'unknown')
+                  
+                  if not status_url:
+                      print(f"  ❌ No status URL returned")
+                      failed.append(url)
+                      continue
+                  
+                  # Wait for completion
+                  download_url = None
+                  for attempt in range(90):
+                      time.sleep(2)
+                      sr = session.get(status_url, timeout=15)
+                      sd = sr.json()
+                      
+                      if sd.get('status') == 'completed':
+                          download_url = sd.get('downloadUrl')
+                          break
+                      elif sd.get('status') == 'failed':
+                          print(f"  ❌ Conversion failed")
+                          break
+                  
+                  if not download_url:
+                      print(f"  ❌ Timeout or failed")
+                      failed.append(url)
+                      continue
+                  
+                  # Prepare filename
+                  clean_title = re.sub(r'[^a-zA-Z0-9\-_]', '_', title.replace(' ', '_'))[:80]
+                  filename = f"{clean_title}_{video_id}_{qual}.{fmt}"
+                  filepath = os.path.join(out_dir, filename)
+                  
+                  # Download file
+                  print(f"  📥 Downloading: {title[:60]}...")
+                  dl_resp = session.get(download_url, timeout=300)
+                  dl_resp.raise_for_status()
+                  
+                  with open(filepath, 'wb') as f:
+                      f.write(dl_resp.content)
+                  
+                  file_size = os.path.getsize(filepath) / (1024 * 1024)
+                  print(f"  ✅ Downloaded: {filename} ({file_size:.1f} MB)")
+                  downloaded.append(filepath)
+                  
+                  # Small delay between downloads
+                  time.sleep(1)
+                  
+              except Exception as e:
+                  print(f"  ❌ Error: {str(e)}")
+                  failed.append(url)
           
-          # Save session info for next steps
-          with open(f"{OUT_DIR}/.session_info", "w") as f:
-              f.write(session_dir)
+          # Summary
+          print("\n" + "=" * 50)
+          print(f"📊 DOWNLOAD SUMMARY:")
+          print(f"  ✅ Success: {len(downloaded)}/{len(urls)}")
+          print(f"  ❌ Failed: {len(failed)}/{len(urls)}")
           
-          print(f"✅ Downloaded to {session_dir}")
-          print(f"📊 Downloaded {len(list(Path(session_dir).rglob('*.mp*')))} files")
-          PYEOF
-        env:
-          FORMAT: ${{ env.FORMAT }}
-          QUALITY: ${{ env.QUALITY }}
-          MODE: ${{ env.MODE }}
-
-      - name: 📦 Process and organize files
-        run: |
-          SESSION_DIR=$(cat "${{ github.event.inputs.output_folder }}/.session_info")
-          cd "$SESSION_DIR"
+          # Save info for next steps
+          with open(os.path.join(out_dir, ".batch_info"), "w") as f:
+              f.write(f"total={len(urls)}\n")
+              f.write(f"success={len(downloaded)}\n")
+              f.write(f"failed={len(failed)}\n")
           
-          # Create organized structure
-          mkdir -p organized/{videos,audio,thumbnails,subtitles}
+          if failed:
+              print("\n❌ Failed URLs:")
+              for url in failed:
+                  print(f"  - {url}")
           
-          # Move and rename files
-          for file in videos/*.mp4; do
-            [ -f "$file" ] && mv "$file" organized/videos/
-          done
-          
-          for file in videos/*.mp3; do
-            [ -f "$file" ] && mv "$file" organized/audio/
-          done
-          
-          for file in videos/*.jpg videos/*.webp; do
-            [ -f "$file" ] && mv "$file" organized/thumbnails/
-          done
-          
-          for file in videos/*.vtt videos/*.srt; do
-            [ -f "$file" ] && mv "$file" organized/subtitles/
-          done
-          
-          # Generate README
-          cat > README.md << 'EOF'
-          # 📥 YouTube Download Session
-          
-          ## Structure
-          - `organized/videos/` - Video files (MP4)
-          - `organized/audio/` - Audio files (MP3)
-          - `organized/thumbnails/` - Video thumbnails
-          - `organized/subtitles/` - Subtitle files
-          - `metadata/` - Download information
-          
-          ## Files
-          $(find organized -type f | sed 's/^/- /')
-          
-          ---
-          Downloaded using GitHub Actions
           EOF
+        env:
+          PYTHONUNBUFFERED: 1
 
-      - name: 🗜️ Compress and split files
+      - name: Split large files (optional)
         run: |
-          SESSION_DIR=$(cat "${{ github.event.inputs.output_folder }}/.session_info")
+          OUTPUT_FOLDER="${{ github.event.inputs.output_folder }}"
           MAX_MB=${{ github.event.inputs.max_part_mb }}
           
           if [ "$MAX_MB" -gt 0 ]; then
-            cd "$SESSION_DIR/organized"
-            
-            for dir in videos audio; do
-              for file in "$dir"/*; do
-                if [ -f "$file" ]; then
-                  SIZE_MB=$(du -m "$file" | cut -f1)
-                  if [ "$SIZE_MB" -gt "$MAX_MB" ]; then
-                    echo "📦 Splitting $file (${SIZE_MB}MB)"
-                    split -b "${MAX_MB}M" "$file" "${file}.part."
-                    rm "$file"
-                  fi
+            cd "$OUTPUT_FOLDER"
+            for file in *; do
+              if [ -f "$file" ] && [ "$file" != ".batch_info" ]; then
+                SIZE_MB=$(du -m "$file" | cut -f1)
+                if [ "$SIZE_MB" -gt "$MAX_MB" ]; then
+                  echo "📦 Splitting $file (${SIZE_MB}MB)"
+                  mkdir -p "${file}_parts"
+                  split -b "${MAX_MB}M" -d "$file" "${file}_parts/${file}.part."
+                  rm "$file"
                 fi
-              done
+              fi
             done
+            cd ..
           fi
 
-      - name: 🧹 Cleanup old downloads (if scheduled)
-        run: |
-          RETENTION_DAYS=${{ github.event.inputs.schedule_cleanup }}
-          if [ "$RETENTION_DAYS" -gt 0 ]; then
-            echo "🧹 Removing downloads older than $RETENTION_DAYS days"
-            find "${{ github.event.inputs.output_folder }}" -type d -name "session_*" -mtime +$RETENTION_DAYS -exec rm -rf {} \;
-          fi
-
-      - name: 📊 Generate statistics
-        run: |
-          SESSION_DIR=$(cat "${{ github.event.inputs.output_folder }}/.session_info")
-          
-          echo "📊 Download Statistics:" > "$SESSION_DIR/stats.txt"
-          echo "===================" >> "$SESSION_DIR/stats.txt"
-          echo "Date: $(date)" >> "$SESSION_DIR/stats.txt"
-          echo "Total files: $(find $SESSION_DIR -type f | wc -l)" >> "$SESSION_DIR/stats.txt"
-          echo "Total size: $(du -sh $SESSION_DIR | cut -f1)" >> "$SESSION_DIR/stats.txt"
-          
-          for type in mp4 mp3 jpg webp vtt srt; do
-            count=$(find "$SESSION_DIR" -name "*.$type" | wc -l)
-            [ "$count" -gt 0 ] && echo "${type^^} files: $count" >> "$SESSION_DIR/stats.txt"
-          done
-
-      - name: 🚀 Push to repository
+      - name: Push to repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Stage all new content
           git add "${{ github.event.inputs.output_folder }}/"
           
-          # Generate commit message
-          SESSION_DIR=$(cat "${{ github.event.inputs.output_folder }}/.session_info")
-          COMMIT_MSG="📥 Download: $(basename $SESSION_DIR) [skip ci]
+          # Count files
+          FILE_COUNT=$(find "${{ github.event.inputs.output_folder }}" -type f ! -name ".batch_info" | wc -l)
           
-          - Type: ${{ github.event.inputs.download_type }}
-          - Format: ${{ github.event.inputs.output_format }}
-          - Quality: ${{ github.event.inputs.quality_preset }}
-          - Files: $(find $SESSION_DIR -type f | wc -l)"
-          
-          git commit -m "$COMMIT_MSG" || echo "Nothing to commit"
+          git commit -m "📥 Downloaded $FILE_COUNT videos [skip ci]" || echo "Nothing to commit"
           git push
-          
-          # Cleanup
-          rm "${{ github.event.inputs.output_folder }}/.session_info"
 
-      - name: 📋 Summary
+      - name: Final summary
         run: |
-          echo "✅ Download Complete!"
-          echo "📁 Location: ${{ github.event.inputs.output_folder }}"
-          echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/tree/main/${{ github.event.inputs.output_folder }}"
+          OUTPUT_FOLDER="${{ github.event.inputs.output_folder }}"
+          echo "✅ ALL DONE!"
+          echo "📁 Files saved in: $OUTPUT_FOLDER"
+          echo "📊 Total files: $(find $OUTPUT_FOLDER -type f ! -name '.batch_info' | wc -l)"
+          echo "💾 Total size: $(du -sh $OUTPUT_FOLDER | cut -f1)"
