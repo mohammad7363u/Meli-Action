@@ -1,0 +1,211 @@
+📥 گزارش دانلود - 2026-05-06 16:55:21
+📥 شماره 1 - https://youtu.be/U2vRKl_gj78
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/U2vRKl_gj78
+[youtube] U2vRKl_gj78: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] U2vRKl_gj78: Downloading android vr player API JSON
+ERROR: [youtube] U2vRKl_gj78: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 1 موفق
+
+📥 شماره 2 - https://youtu.be/Z1Aw6HpZjVo
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/Z1Aw6HpZjVo
+[youtube] Z1Aw6HpZjVo: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] Z1Aw6HpZjVo: Downloading android vr player API JSON
+ERROR: [youtube] Z1Aw6HpZjVo: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 2 موفق
+
+📥 شماره 3 - https://youtu.be/qiNRKCxoDGk
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/qiNRKCxoDGk
+[youtube] qiNRKCxoDGk: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] qiNRKCxoDGk: Downloading android vr player API JSON
+ERROR: [youtube] qiNRKCxoDGk: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 3 موفق
+
+📥 شماره 4 - https://youtu.be/SYxor82He8Q
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/SYxor82He8Q
+[youtube] SYxor82He8Q: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] SYxor82He8Q: Downloading android vr player API JSON
+ERROR: [youtube] SYxor82He8Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 4 موفق
+
+📥 شماره 5 - https://youtu.be/ExlWOO8o2lc
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/ExlWOO8o2lc
+[youtube] ExlWOO8o2lc: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] ExlWOO8o2lc: Downloading android vr player API JSON
+ERROR: [youtube] ExlWOO8o2lc: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 5 موفق
+
+📥 شماره 6 - https://youtu.be/SrX-JegN4jo
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/SrX-JegN4jo
+[youtube] SrX-JegN4jo: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] SrX-JegN4jo: Downloading android vr player API JSON
+ERROR: [youtube] SrX-JegN4jo: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 6 موفق
+
+📥 شماره 7 - https://youtu.be/O_lWHq7aeuY
+[generic] Extracting URL: (Windows
+ERROR: [generic] '(Windows' is not a valid URL
+[generic] Extracting URL: NT
+ERROR: [generic] 'NT' is not a valid URL
+[generic] Extracting URL: 10.0;
+ERROR: [generic] '10.0;' is not a valid URL
+[generic] Extracting URL: Win64;
+ERROR: [generic] 'Win64;' is not a valid URL
+[generic] Extracting URL: x64)
+ERROR: [generic] 'x64)' is not a valid URL
+[generic] Extracting URL: AppleWebKit/537.36
+ERROR: [generic] 'AppleWebKit/537.36' is not a valid URL
+[generic] Extracting URL: (KHTML,
+ERROR: [generic] '(KHTML,' is not a valid URL
+[generic] Extracting URL: like
+ERROR: [generic] 'like' is not a valid URL
+[generic] Extracting URL: Gecko)
+ERROR: [generic] 'Gecko)' is not a valid URL
+[generic] Extracting URL: Chrome/120.0.0.0
+ERROR: [generic] 'Chrome/120.0.0.0' is not a valid URL
+[generic] Extracting URL: Safari/537.36'
+ERROR: [generic] "Safari/537.36'" is not a valid URL
+[youtube] Extracting URL: https://youtu.be/O_lWHq7aeuY
+[youtube] O_lWHq7aeuY: Downloading webpage
+[youtube] Sleeping 1.0 seconds ...
+[youtube] O_lWHq7aeuY: Downloading android vr player API JSON
+ERROR: [youtube] O_lWHq7aeuY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+✅ دانلود 7 موفق
+
