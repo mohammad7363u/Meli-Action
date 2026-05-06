@@ -1,0 +1,320 @@
+name: دانلودر یوتیوب پیشرفته
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_urls:
+        description: '🎥 لینک‌های یوتیوب (با کاما جدا کنید)'
+        required: true
+        type: string
+      output_format:
+        description: '📦 نوع خروجی'
+        required: true
+        type: choice
+        options:
+          - '🎬 ویدیو (MP4)'
+          - '🎵 فقط صدا (MP3)'
+          - '📹 بهترین کیفیت خودکار'
+        default: '🎬 ویدیو (MP4)'
+      quality:
+        description: '⚡ کیفیت ویدیو (144/240/360/480/720/1080/1440/2160)'
+        required: false
+        type: string
+        default: '720'
+      create_zip:
+        description: '📦 همه فایل‌ها را در یک فایل ZIP قرار بده'
+        required: false
+        type: boolean
+        default: true
+      split_size:
+        description: '📊 حداکثر حجم هر بخش به مگابایت (0 = تقسیم نشود)'
+        required: false
+        type: number
+        default: 0
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: 📥 دریافت کد
+        uses: actions/checkout@v4
+
+      - name: 🛠️ نصب ابزارها
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg pv zip
+          pip3 install yt-dlp
+
+      - name: 🎯 دانلود و زیپ
+        id: download
+        env:
+          URLS: ${{ github.event.inputs.video_urls }}
+          QUALITY: ${{ github.event.inputs.quality }}
+          FORMAT_TYPE: ${{ github.event.inputs.output_format }}
+          CREATE_ZIP: ${{ github.event.inputs.create_zip }}
+        run: |
+          set -e
+          
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          
+          # پوشه نهایی برای ذخیره
+          FINAL_DIR="downloads/zips/${TIMESTAMP}"
+          mkdir -p "$FINAL_DIR"
+          
+          # پوشه موقت برای دانلود
+          TEMP_DIR="downloads/temp_download"
+          rm -rf "$TEMP_DIR" 2>/dev/null || true
+          mkdir -p "$TEMP_DIR"
+          
+          echo "📁 پوشه نهایی: $FINAL_DIR"
+          echo "📁 پوشه موقت: $TEMP_DIR"
+          
+          # 🎯 تعیین فرمت خروجی
+          FORMAT_STRING=""
+          POST_PROCESSOR=""
+          
+          case "$FORMAT_TYPE" in
+            *"فقط صدا"*|*"MP3"*)
+              echo "🎵 حالت: فقط صدا"
+              FORMAT_STRING="bestaudio/best"
+              POST_PROCESSOR="--extract-audio --audio-format mp3 --audio-quality 0"
+              FILE_EXT="mp3"
+              ;;
+            *"بهترین کیفیت"*)
+              echo "📹 حالت: بهترین کیفیت خودکار"
+              FORMAT_STRING="bestvideo+bestaudio/best"
+              POST_PROCESSOR="--merge-output-format mp4"
+              FILE_EXT="mp4"
+              ;;
+            *)
+              if [[ "$QUALITY" =~ ^[0-9]+$ ]] && [ "$QUALITY" -ge 144 ]; then
+                echo "🎬 حالت: ویدیو با کیفیت ${QUALITY}p"
+                FORMAT_STRING="bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]/best"
+              else
+                echo "⚠️ کیفیت نامعتبر - استفاده از بهترین کیفیت"
+                FORMAT_STRING="bestvideo+bestaudio/best"
+              fi
+              POST_PROCESSOR="--merge-output-format mp4"
+              FILE_EXT="mp4"
+              ;;
+          esac
+          
+          echo "🔍 فرمت نهایی: $FORMAT_STRING"
+          
+          COMMON_OPTS="--no-playlist --retries 10 --fragment-retries 10 --concurrent-fragments 8 --sleep-requests 1 --sleep-interval 1 --max-sleep-interval 5 --user-agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' --extractor-retries 5 --socket-timeout 30 --no-warnings"
+          
+          # 📥 پردازش لینک‌ها و دانلود
+          IFS=',' read -ra URL_ARRAY <<< "$URLS"
+          TOTAL_URLS=${#URL_ARRAY[@]}
+          CURRENT=0
+          
+          echo "📋 تعداد لینک‌ها: $TOTAL_URLS"
+          
+          # فایل لاگ
+          LOG_FILE="$FINAL_DIR/download_log.txt"
+          echo "📥 گزارش دانلود - $(date '+%Y-%m-%d %H:%M:%S')" > "$LOG_FILE"
+          echo "═══════════════════════════════" >> "$LOG_FILE"
+          
+          for url in "${URL_ARRAY[@]}"; do
+            CLEAN_URL=$(echo "$url" | sed 's/[[:space:]]*//g' | sed 's/\?si=.*$//')
+            
+            if [ -z "$CLEAN_URL" ]; then
+              continue
+            fi
+            
+            CURRENT=$((CURRENT + 1))
+            
+            echo ""
+            echo "═══════════════════════════════════════"
+            echo "📥 دانلود $CURRENT از $TOTAL_URLS"
+            echo "🔗 $CLEAN_URL"
+            
+            echo "📥 شماره $CURRENT - $CLEAN_URL" >> "$LOG_FILE"
+            
+            if yt-dlp \
+              --format "$FORMAT_STRING" \
+              $POST_PROCESSOR \
+              --output "$TEMP_DIR/%(title).150s [%(id)s].%(ext)s" \
+              $COMMON_OPTS \
+              "$CLEAN_URL" 2>&1 | tee -a "$LOG_FILE"; then
+              echo "✅ دانلود $CURRENT موفق" >> "$LOG_FILE"
+              echo "✅ دانلود $CURRENT موفق"
+            else
+              echo "❌ خطا در دانلود $CURRENT" >> "$LOG_FILE"
+              echo "❌ خطا در دانلود $CURRENT"
+            fi
+            
+            echo "" >> "$LOG_FILE"
+            sleep 2
+          done
+          
+          echo ""
+          echo "═══════════════════════════════════════"
+          echo "✅ دانلود همه لینک‌ها به پایان رسید"
+          
+          # نمایش فایل‌های دانلود شده
+          echo ""
+          echo "📋 فایل‌های دانلود شده در پوشه موقت:"
+          ls -lah "$TEMP_DIR/"
+          
+          # شمارش فایل‌های مدیا
+          MEDIA_FILES=$(find "$TEMP_DIR" -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" -o -name "*.webm" \) | wc -l)
+          echo "📊 تعداد فایل‌های مدیا: $MEDIA_FILES"
+          
+          # 📦 ایجاد ZIP اگر نیاز بود
+          if [ "$CREATE_ZIP" = "true" ]; then
+            echo ""
+            echo "📦 در حال ایجاد فایل ZIP..."
+            
+            ZIP_NAME="youtube_downloads_${TIMESTAMP}.zip"
+            
+            cd "$TEMP_DIR"
+            
+            # زیپ کردن همه فایل‌ها
+            zip -r "$ZIP_NAME" .
+            
+            # انتقال ZIP به پوشه نهایی
+            mv "$ZIP_NAME" "../zips/${TIMESTAMP}/"
+            
+            ZIP_PATH="$FINAL_DIR/$ZIP_NAME"
+            ZIP_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
+            
+            echo "✅ فایل ZIP ایجاد شد: $ZIP_NAME ($ZIP_SIZE)"
+            
+            # نمایش محتویات ZIP
+            echo ""
+            echo "📋 محتویات فایل ZIP:"
+            unzip -l "$ZIP_PATH"
+          else
+            # اگه زیپ نمی‌خواد، فایل‌ها رو مستقیم منتقل کن
+            echo "📁 انتقال فایل‌ها به پوشه نهایی..."
+            cp -r "$TEMP_DIR"/* "$FINAL_DIR/" 2>/dev/null || true
+          fi
+          
+          SUCCESS_COUNT=$MEDIA_FILES
+          
+          echo "output_dir=$FINAL_DIR" >> $GITHUB_OUTPUT
+          echo "success_count=$SUCCESS_COUNT" >> $GITHUB_OUTPUT
+          echo "total_count=$TOTAL_URLS" >> $GITHUB_OUTPUT
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: ✂️ تقسیم فایل ZIP
+        if: ${{ github.event.inputs.split_size > 0 && github.event.inputs.create_zip == 'true' }}
+        run: |
+          FINAL_DIR="${{ steps.download.outputs.output_dir }}"
+          ZIP_NAME="${{ steps.download.outputs.zip_name }}"
+          SPLIT_SIZE=${{ github.event.inputs.split_size }}
+          
+          cd "$FINAL_DIR"
+          
+          if [ -f "$ZIP_NAME" ]; then
+            SIZE_MB=$(du -m "$ZIP_NAME" | cut -f1)
+            echo "📦 حجم ZIP: ${SIZE_MB}MB"
+            
+            if [ $SIZE_MB -gt $SPLIT_SIZE ]; then
+              echo "✂️ در حال تقسیم $ZIP_NAME..."
+              split -b ${SPLIT_SIZE}M -d "$ZIP_NAME" "${ZIP_NAME}.part"
+              rm "$ZIP_NAME"
+              
+              cat > "reassemble.sh" << 'EOF'
+#!/bin/bash
+cat ${ZIP_NAME}.part* > "${ZIP_NAME}"
+echo "✅ فایل ترکیب شد: ${ZIP_NAME}"
+read -p "🗑️ حذف بخش‌ها؟ (y/n) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    rm ${ZIP_NAME}.part*
+    echo "🗑️ بخش‌ها حذف شدند"
+fi
+EOF
+              chmod +x "reassemble.sh"
+              
+              echo "✅ فایل به $(ls ${ZIP_NAME}.part* | wc -l) بخش تقسیم شد"
+            else
+              echo "ℹ️ حجم فایل کمتر از حد تقسیم است"
+            fi
+          fi
+
+      - name: 🔐 ایجاد چکسام
+        run: |
+          FINAL_DIR="${{ steps.download.outputs.output_dir }}"
+          cd "$FINAL_DIR"
+          
+          echo "🔐 محاسبه چکسام‌ها..."
+          md5sum * 2>/dev/null > checksums.md5 || true
+          sha256sum * 2>/dev/null > checksums.sha256 || true
+          echo "✅ چکسام‌ها ایجاد شدند"
+
+      - name: 📊 ایجاد فایل اطلاعات
+        run: |
+          FINAL_DIR="${{ steps.download.outputs.output_dir }}"
+          
+          cat > "$FINAL_DIR/INFO.txt" << EOF
+╔══════════════════════════════════╗
+║     📥 اطلاعات دانلود گروهی     ║
+╠══════════════════════════════════╣
+📅 تاریخ: $(date '+%Y-%m-%d %H:%M:%S')
+📦 نوع: ${{ github.event.inputs.output_format }}
+⚡ کیفیت: ${{ github.event.inputs.quality }}
+📊 موفق: ${{ steps.download.outputs.success_count }} از ${{ steps.download.outputs.total_count }}
+📁 فایل ZIP: ${{ steps.download.outputs.zip_name }}
+🔧 ابزار: yt-dlp + ffmpeg
+💻 سیستم: GitHub Actions
+
+📋 لینک‌ها:
+EOF
+          
+          IFS=',' read -ra URL_ARRAY <<< "${{ github.event.inputs.video_urls }}"
+          for url in "${URL_ARRAY[@]}"; do
+            echo "  • $(echo "$url" | sed 's/[[:space:]]*//g')" >> "$FINAL_DIR/INFO.txt"
+          done
+          
+          TOTAL_SIZE=$(du -sh "$FINAL_DIR" | cut -f1)
+          echo "💾 حجم کل: $TOTAL_SIZE" >> "$FINAL_DIR/INFO.txt"
+
+      - name: 🧹 پاکسازی پوشه موقت
+        if: always()
+        run: |
+          rm -rf downloads/temp_download 2>/dev/null || true
+          echo "🧹 پوشه موقت پاک شد"
+
+      - name: 💾 ذخیره در پروژه
+        run: |
+          set -e
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git pull --rebase
+          
+          # اضافه کردن پوشه zips
+          git add downloads/zips/
+          
+          # حذف پوشه temp اگه وجود داره
+          rm -rf downloads/temp_download 2>/dev/null || true
+          rm -rf downloads/temp_* 2>/dev/null || true
+          
+          COMMIT_MSG="📦 دانلود و زیپ - $(date '+%Y-%m-%d %H:%M') [skip ci]"
+          if git diff --cached --quiet; then
+            echo "⏭️ چیزی برای commit وجود ندارد"
+          else
+            git commit -m "$COMMIT_MSG"
+            git push
+            echo "✅ فایل‌ها در پروژه ذخیره شدند"
+          fi
+
+      - name: ✅ گزارش نهایی
+        run: |
+          FINAL_DIR_NAME=$(basename ${{ steps.download.outputs.output_dir }})
+          echo "╔══════════════════════════════════════╗"
+          echo "║   ✅ دانلود و زیپ با موفقیت انجام شد ║"
+          echo "╠══════════════════════════════════════╣"
+          echo "║ 📁 مسیر: downloads/zips/${FINAL_DIR_NAME}"
+          echo "║ 📦 فایل: ${{ steps.download.outputs.zip_name }}"
+          echo "║ 📊 فایل‌های مدیا: ${{ steps.download.outputs.success_count }}"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "🔗 لینک مستقیم: ${{ github.server_url }}/${{ github.repository }}/tree/main/${{ steps.download.outputs.output_dir }}"
