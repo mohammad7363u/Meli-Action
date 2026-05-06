@@ -37,66 +37,53 @@ jobs:
           sudo apt-get install -y ffmpeg zip
           pip3 install yt-dlp
 
-      - name: دانلود و زیپ
+      - name: دانلود فایل‌ها
         run: |
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          OUTPUT_DIR="downloads/${TIMESTAMP}"
-          mkdir -p "$OUTPUT_DIR"
+          mkdir -p downloads
           
-          # تعیین فرمت
           if [[ "${{ github.event.inputs.output_format }}" == *"MP3"* ]]; then
             FORMAT="bestaudio/best"
             ARGS="--extract-audio --audio-format mp3 --audio-quality 0"
           else
             QUAL="${{ github.event.inputs.quality }}"
             QUAL_NUM=$(echo "$QUAL" | grep -o '[0-9]*')
+            if [ -z "$QUAL_NUM" ]; then QUAL_NUM="720"; fi
             FORMAT="bestvideo[height<=${QUAL_NUM}]+bestaudio/best[height<=${QUAL_NUM}]/best"
             ARGS="--merge-output-format mp4"
           fi
           
-          # دانلود هر لینک
           IFS=',' read -ra URLS <<< "${{ github.event.inputs.video_urls }}"
-          COUNT=0
           
           for url in "${URLS[@]}"; do
             CLEAN_URL=$(echo "$url" | sed 's/[[:space:]]*//g' | sed 's/?si=.*$//')
             if [ -n "$CLEAN_URL" ]; then
-              COUNT=$((COUNT + 1))
-              echo "دانلود $COUNT: $CLEAN_URL"
-              yt-dlp -f "$FORMAT" $ARGS -o "$OUTPUT_DIR/%(title)s.%(ext)s" --no-playlist "$CLEAN_URL" || echo "خطا در دانلود $CLEAN_URL"
+              echo "در حال دانلود: $CLEAN_URL"
+              yt-dlp \
+                -f "$FORMAT" \
+                $ARGS \
+                -o "downloads/%(title)s.%(ext)s" \
+                --no-playlist \
+                --retries 5 \
+                --user-agent "Mozilla/5.0" \
+                "$CLEAN_URL" || echo "خطا: $CLEAN_URL"
             fi
           done
           
           echo ""
-          echo "دانلود $COUNT فایل تموم شد"
-          echo ""
           echo "فایل‌های دانلود شده:"
-          ls -lah "$OUTPUT_DIR/"
-          
-          # بررسی وجود فایل
-          FILE_COUNT=$(ls "$OUTPUT_DIR" | wc -l)
-          echo "تعداد فایل‌ها: $FILE_COUNT"
-          
-          if [ $FILE_COUNT -gt 0 ]; then
-            # رفتن به پوشه اصلی downloads
+          ls -lah downloads/
+
+      - name: زیپ کردن
+        run: |
+          if ls downloads/*.mp4 downloads/*.mp3 1>/dev/null 2>&1; then
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             cd downloads
-            
             ZIP_NAME="youtube_${TIMESTAMP}.zip"
-            
-            # زیپ کردن پوشه حاوی فایل‌ها
-            zip -r "$ZIP_NAME" "${TIMESTAMP}/"
-            
-            echo ""
-            echo "فایل زیپ ساخته شد:"
+            zip "$ZIP_NAME" *.mp4 *.mp3 *.webm *.mkv 2>/dev/null
+            echo "زیپ ساخته شد: $ZIP_NAME"
             ls -lah "$ZIP_NAME"
-            
-            # نمایش محتویات زیپ
-            echo ""
-            echo "محتویات فایل زیپ:"
-            unzip -l "$ZIP_NAME"
           else
-            echo "هیچ فایلی برای زیپ وجود ندارد!"
-            exit 1
+            echo "فایلی برای زیپ پیدا نشد"
           fi
 
       - name: ذخیره در پروژه
@@ -105,5 +92,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase
           git add downloads/
-          git commit -m "دانلود جدید [skip ci]" || echo "چیزی برای commit نیست"
+          git commit -m "دانلود [skip ci]" || echo "بدون تغییر"
           git push
