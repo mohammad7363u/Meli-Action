@@ -15,30 +15,33 @@ on:
           - '🎬 ویدیو (MP4)'
           - '🎵 فقط صدا (MP3)'
           - '📹 بهترین کیفیت خودکار'
-          - '🎞️ لیست پخش کامل'
         default: '🎬 ویدیو (MP4)'
       quality:
-        description: '⚡ کیفیت'
+        description: '⚡ کیفیت ویدیو (144/240/360/480/720/1080/1440/2160)'
         required: false
         type: string
-        default: 'best'
+        default: '720'
       split_size:
-        description: '📊 حداکثر حجم هر بخش (MB) - 0 یعنی تقسیم نشود'
+        description: '📊 حداکثر حجم هر بخش به مگابایت (0 = تقسیم نشود)'
         required: false
         type: number
-        default: 2000
+        default: 0
       custom_filename:
-        description: '📝 نام فایل دلخواه (اختیاری)'
+        description: '📝 نام دلخواه فایل (اختیاری - بدون پسوند)'
         required: false
         type: string
         default: ''
+      embed_metadata:
+        description: '🏷️ افزودن متادیتا و تصویر به فایل'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   download:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
       
     steps:
       - name: 📥 دریافت کد
@@ -47,144 +50,249 @@ jobs:
       - name: 🛠️ نصب ابزارها
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg aria2 pv python3-pip
+          sudo apt-get install -y ffmpeg pv
           pip3 install yt-dlp
-          
+
       - name: 🎯 دانلود هوشمند
         id: download
         env:
           URL: ${{ github.event.inputs.video_url }}
+          QUALITY: ${{ github.event.inputs.quality }}
+          FORMAT_TYPE: ${{ github.event.inputs.output_format }}
+          CUSTOM_NAME: ${{ github.event.inputs.custom_filename }}
+          EMBED_DATA: ${{ github.event.inputs.embed_metadata }}
         run: |
-          # Determine format based on input
-          FORMAT_INPUT="${{ github.event.inputs.output_format }}"
-          CUSTOM_NAME="${{ github.event.inputs.custom_filename }}"
-          QUALITY="${{ github.event.inputs.quality }}"
+          set -e
           
-          # Set output directory with timestamp
+          # ایجاد پوشه با timestamp
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           OUTPUT_DIR="downloads/${TIMESTAMP}"
           mkdir -p "$OUTPUT_DIR"
           
-          # Create download script
-          cat > download.sh << 'SCRIPT'
-          #!/bin/bash
-          set -e
+          echo "📁 Output directory: $OUTPUT_DIR"
+          echo "🎥 URL: $URL"
+          echo "🎯 Format type: $FORMAT_TYPE"
+          echo "⚡ Requested quality: $QUALITY"
           
-          # Format selection logic
-          case "$FORMAT_INPUT" in
-            *"فقط صدا"*)
-              FORMAT="bestaudio/best"
-              EXTRACT_AUDIO="--extract-audio --audio-format mp3"
+          # 🎯 تعیین فرمت خروجی
+          FORMAT_STRING=""
+          POST_PROCESSOR=""
+          
+          case "$FORMAT_TYPE" in
+            *"فقط صدا"*|*"MP3"*)
+              echo "🎵 حالت: فقط صدا"
+              FORMAT_STRING="bestaudio/best"
+              POST_PROCESSOR="--extract-audio --audio-format mp3 --audio-quality 0"
+              OUTPUT_EXT="mp3"
               ;;
             *"بهترین کیفیت"*)
-              FORMAT="bestvideo+bestaudio/best"
-              MERGE="--merge-output-format mp4"
-              ;;
-            *"لیست پخش"*)
-              FORMAT="best"
-              PLAYLIST="--yes-playlist"
+              echo "📹 حالت: بهترین کیفیت خودکار"
+              FORMAT_STRING="bestvideo+bestaudio/best"
+              POST_PROCESSOR="--merge-output-format mp4"
+              OUTPUT_EXT="mp4"
               ;;
             *)
-              FORMAT="bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]"
-              MERGE="--merge-output-format mp4"
+              # اعتبارسنجی کیفیت
+              if [[ "$QUALITY" =~ ^[0-9]+$ ]] && [ "$QUALITY" -ge 144 ]; then
+                echo "🎬 حالت: ویدیو با کیفیت ${QUALITY}p"
+                FORMAT_STRING="bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]/best"
+              else
+                echo "⚠️ کیفیت نامعتبر - استفاده از بهترین کیفیت"
+                FORMAT_STRING="bestvideo+bestaudio/best"
+              fi
+              POST_PROCESSOR="--merge-output-format mp4"
+              OUTPUT_EXT="mp4"
               ;;
           esac
           
-          # Download with yt-dlp
-          yt-dlp \
-            --format "$FORMAT" \
-            $EXTRACT_AUDIO \
-            $MERGE \
-            $PLAYLIST \
-            --output "$OUTPUT_DIR/%(title)s.%(ext)s" \
-            --write-info-json \
-            --write-thumbnail \
-            --embed-metadata \
-            --no-playlist \
+          echo "🔍 فرمت نهایی: $FORMAT_STRING"
+          
+          # ساخت نام فایل
+          if [ -n "$CUSTOM_NAME" ]; then
+            OUTPUT_TEMPLATE="$OUTPUT_DIR/${CUSTOM_NAME}.%(ext)s"
+          else
+            OUTPUT_TEMPLATE="$OUTPUT_DIR/%(title).200s.%(ext)s"
+          fi
+          
+          # آپشن‌های مشترک
+          COMMON_OPTS="--no-playlist \
             --retries 10 \
             --fragment-retries 10 \
             --concurrent-fragments 8 \
-            --downloader aria2c \
+            --sleep-requests 1 \
+            --sleep-interval 1 \
+            --max-sleep-interval 5 \
+            --user-agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' \
+            --extractor-retries 5 \
+            --socket-timeout 30 \
+            --no-warnings"
+          
+          # آپشن‌های متادیتا
+          METADATA_OPTS=""
+          if [ "$EMBED_DATA" = "true" ]; then
+            METADATA_OPTS="--write-info-json \
+              --write-thumbnail \
+              --embed-metadata \
+              --embed-thumbnail"
+          fi
+          
+          # 📥 اجرای دانلود
+          echo "🚀 شروع دانلود..."
+          yt-dlp \
+            --format "$FORMAT_STRING" \
+            $POST_PROCESSOR \
+            --output "$OUTPUT_TEMPLATE" \
+            $COMMON_OPTS \
+            $METADATA_OPTS \
             "$URL"
-          SCRIPT
           
-          chmod +x download.sh
-          ./download.sh
+          # لیست فایل‌های دانلود شده
+          echo "📋 فایل‌های دانلود شده:"
+          ls -lah "$OUTPUT_DIR"
           
-          # List downloaded files
-          echo "downloaded_files<<EOF" >> $GITHUB_OUTPUT
-          ls -la "$OUTPUT_DIR" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # ذخیره مسیر برای مراحل بعد
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
 
-      - name: 📦 فشرده‌سازی و تقسیم فایل‌ها
+      - name: 📊 ایجاد فایل اطلاعات
+        run: |
+          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          
+          cat > "$OUTPUT_DIR/INFO.txt" << EOF
+          📥 اطلاعات دانلود
+          ═══════════════
+          📅 تاریخ: $(date '+%Y-%m-%d %H:%M:%S')
+          🔗 منبع: ${{ github.event.inputs.video_url }}
+          📦 نوع: ${{ github.event.inputs.output_format }}
+          ⚡ کیفیت: ${{ github.event.inputs.quality }}
+          🔧 ابزار: yt-dlp + ffmpeg
+          💻 سیستم: GitHub Actions
+          ✅ وضعیت: کامل شده
+          EOF
+          
+          # محاسبه حجم کل
+          TOTAL_SIZE=$(du -sh "$OUTPUT_DIR" | cut -f1)
+          echo "💾 حجم کل: $TOTAL_SIZE" >> "$OUTPUT_DIR/INFO.txt"
+
+      - name: ✂️ تقسیم فایل‌های حجیم
+        if: ${{ github.event.inputs.split_size > 0 }}
         run: |
           OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
           SPLIT_SIZE=${{ github.event.inputs.split_size }}
-          
           cd "$OUTPUT_DIR"
           
-          # Create checksums
-          md5sum * > checksums.md5
-          sha256sum * > checksums.sha256
+          echo "✂️ بررسی فایل‌ها برای تقسیم (حداکثر ${SPLIT_SIZE}MB)..."
           
-          # Split large files
-          for file in *.mp4 *.mp3 *.mkv; do
+          for file in *.{mp4,mp3,mkv,webm}; do
             if [ -f "$file" ]; then
               SIZE_MB=$(du -m "$file" | cut -f1)
-              if [ $SPLIT_SIZE -gt 0 ] && [ $SIZE_MB -gt $SPLIT_SIZE ]; then
-                echo "✂️ Splitting $file ($SIZE_MB MB)"
-                split -b ${SPLIT_SIZE}M -d "$file" "${file}."
+              echo "  📦 $file: ${SIZE_MB}MB"
+              
+              if [ $SIZE_MB -gt $SPLIT_SIZE ]; then
+                echo "    ✂️ در حال تقسیم..."
+                split -b ${SPLIT_SIZE}M -d "$file" "${file}.part"
                 rm "$file"
-                # Create reassembly script
-                echo "#!/bin/bash" > "reassemble_${file##*/}.sh"
-                echo "cat ${file}.?? > '${file##*/}'" >> "reassemble_${file##*/}.sh"
-                chmod +x "reassemble_${file##*/}.sh"
+                
+                # ساخت اسکریپت ترکیب مجدد
+                BASENAME=$(basename "$file")
+                cat > "reassemble_${BASENAME}.sh" << EOF
+          #!/bin/bash
+          # اسکریپت ترکیب فایل‌های تقسیم شده
+          cat ${BASENAME}.part* > "${BASENAME}"
+          echo "✅ فایل ترکیب شد: ${BASENAME}"
+          # حذف بخش‌ها بعد از ترکیب موفق
+          read -p "🗑️ حذف فایل‌های بخش؟ (y/n) " -n 1 -r
+          echo
+          if [[ \$REPLY =~ ^[Yy]$ ]]; then
+              rm ${BASENAME}.part*
+              echo "🗑️ فایل‌های بخش حذف شدند"
+          fi
+          EOF
+                chmod +x "reassemble_${BASENAME}.sh"
+                echo "    ✅ فایل تقسیم شد ($(ls ${BASENAME}.part* | wc -l) بخش)"
               fi
             fi
           done
 
-      - name: 📊 ایجاد گزارش دانلود
+      - name: 🔐 ایجاد چکسام
         run: |
           OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
-          cat > "$OUTPUT_DIR/README.md" << EOF
-          # 📥 گزارش دانلود
+          cd "$OUTPUT_DIR"
           
-          **تاریخ:** $(date '+%Y-%m-%d %H:%M:%S')
-          **منبع:** ${{ github.event.inputs.video_url }}
-          **کیفیت:** ${{ github.event.inputs.quality }}
+          echo "🔐 محاسبه چکسام‌ها..."
           
-          ## 📁 فایل‌های دانلود شده
-          ${{ steps.download.outputs.downloaded_files }}
+          # ایجاد فایل‌های چکسام
+          md5sum *.{mp4,mp3,mkv,webm} *.part* 2>/dev/null > checksums.md5 || true
+          sha256sum *.{mp4,mp3,mkv,webm} *.part* 2>/dev/null > checksums.sha256 || true
           
-          ## 🔧 نحوه استفاده
-          - فایل‌های تقسیم شده را با اسکریپت reassemble ترکیب کنید
-          - صحت فایل‌ها را با checksums بررسی کنید
-          
-          ## ℹ️ اطلاعات فنی
-          - ابزار: yt-dlp + aria2
-          - سیستم: GitHub Actions
-          EOF
+          echo "✅ چکسام‌ها ایجاد شدند"
 
-      - name: 🚀 آپلود به GitHub Releases
+      - name: 📦 ذخیره در مخزن
+        run: |
+          set -e
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          
+          echo "💾 آماده‌سازی برای commit..."
+          
+          # فقط فایل‌های کوچک و اطلاعات را commit می‌کنیم
+          git add "$OUTPUT_DIR/INFO.txt"
+          git add "$OUTPUT_DIR/checksums."*
+          git add "$OUTPUT_DIR/"*.json 2>/dev/null || true
+          git add "$OUTPUT_DIR/"*.jpg 2>/dev/null || true
+          git add "$OUTPUT_DIR/"*.png 2>/dev/null || true
+          git add "$OUTPUT_DIR/"*.sh 2>/dev/null || true
+          
+          # فایل‌های کوچک (<100MB) هم اضافه شوند
+          find "$OUTPUT_DIR" -type f -size -100M \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" \) -exec git add {} \; 2>/dev/null || true
+          
+          # commit
+          COMMIT_MSG="📥 دانلود: ${{ github.event.inputs.video_url }} [skip ci]"
+          if git diff --cached --quiet; then
+            echo "⏭️ چیزی برای commit وجود ندارد"
+          else
+            git commit -m "$COMMIT_MSG"
+            git push
+            echo "✅ فایل‌ها با موفقیت در مخزن ذخیره شدند"
+          fi
+
+      - name: 📤 آپلود به Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: download-${{ github.run_id }}
-          name: '📥 دانلود ${{ github.run_number }}'
-          body_path: '${{ steps.download.outputs.output_dir }}/README.md'
+          tag_name: download-${{ github.run_id }}-${{ github.run_attempt }}
+          name: '📥 دانلود شماره ${{ github.run_number }}'
+          body_path: '${{ steps.download.outputs.output_dir }}/INFO.txt'
           files: |
             ${{ steps.download.outputs.output_dir }}/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 💾 ذخیره در مخزن
-        if: github.event.inputs.split_size > 0
+      - name: ✅ گزارش نهایی
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.download.outputs.output_dir }}/README.md"
-          git add "${{ steps.download.outputs.output_dir }}"/*.md5
-          git add "${{ steps.download.outputs.output_dir }}"/*.sha256
-          git add "${{ steps.download.outputs.output_dir }}"/*.sh
-          git commit -m "📥 دانلود: ${{ github.event.inputs.video_url }} [skip ci]" || true
-          git push
+          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          
+          echo "
+          ╔══════════════════════════════════════╗
+          ║     ✅ دانلود با موفقیت انجام شد    ║
+          ╠══════════════════════════════════════╣
+          ║ 📁 مسیر: $OUTPUT_DIR
+          ║ 🔗 لینک: ${{ github.event.inputs.video_url }}
+          ║ 📦 نوع: ${{ github.event.inputs.output_format }}
+          ╚══════════════════════════════════════╝
+          "
+          
+          echo "📋 فایل‌های نهایی:"
+          ls -lah "$OUTPUT_DIR"/*.{mp4,mp3,mkv,webm} 2>/dev/null || echo "  (فایل‌ها در Releases موجود هستند)"
+
+      - name: 🧹 پاکسازی فایل‌های موقت
+        if: always()
+        run: |
+          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          if [ -d "$OUTPUT_DIR" ]; then
+            # حذف فایل‌های موقت yt-dlp
+            find "$OUTPUT_DIR" -name "*.part" -delete 2>/dev/null || true
+            find "$OUTPUT_DIR" -name "*.ytdl" -delete 2>/dev/null || true
+            echo "🧹 پاکسازی انجام شد"
+          fi
