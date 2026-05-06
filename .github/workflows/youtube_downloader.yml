@@ -46,10 +46,13 @@ jobs:
       - name: Setup yt-dlp (with ffmpeg + aria2)
         uses: AnimMouse/setup-yt-dlp@v3
 
+      - name: Install python dependencies
+        run: pip3 install requests
+
       - name: Download and process video
         run: |
           python3 << 'EOF'
-          import os, sys, re, subprocess, time
+          import os, sys, re, subprocess, time, json
 
           URL = "${{ github.event.inputs.video_url }}"
           FMT = "mp3" if "mp3" in "${{ github.event.inputs.output_format }}" else "mp4"
@@ -58,12 +61,10 @@ jobs:
           MAX_MB = int("${{ github.event.inputs.max_part_mb }}")
 
           # Clean URL
-          URL = re.sub(r'[?&](si|pp|feature)=[^&]*', '', URL).strip('?&')
+          URL = re.sub(r'[?&](si|pp|feature|t)=[^&]*', '', URL).strip('?&')
           
-          # Extract video ID
           v_id = "unknown"
-          patterns = [r'youtu\.be/([a-zA-Z0-9_-]{11})', r'v=([a-zA-Z0-9_-]{11})', r'/shorts/([a-zA-Z0-9_-]{11})']
-          for p in patterns:
+          for p in [r'youtu\.be/([a-zA-Z0-9_-]{11})', r'v=([a-zA-Z0-9_-]{11})']:
               m = re.search(p, URL)
               if m:
                   v_id = m.group(1)
@@ -75,80 +76,134 @@ jobs:
           print("=" * 50)
 
           os.makedirs(OUT_DIR, exist_ok=True)
+          success = False
 
-          # Build yt-dlp command
-          output_template = f"{OUT_DIR}/%(title).100s_%(id)s_{QUAL}.%(ext)s"
-          
-          cmd = ['yt-dlp', '--no-warnings', '--no-playlist', '--embed-metadata']
-          
-          if FMT == 'mp3':
-              cmd.extend([
-                  '-x', '--audio-format', 'mp3',
-                  '--audio-quality', QUAL.replace('kbps', ''),
-                  '--embed-thumbnail'
-              ])
-          else:
-              if QUAL == 'best':
-                  cmd.extend(['-f', 'bestvideo+bestaudio/best'])
+          # --- METHOD 1: yt-dlp ---
+          print("🔹 Trying yt-dlp...")
+          try:
+              output_template = f"{OUT_DIR}/%(title).100s_%(id)s_{QUAL}.%(ext)s"
+              cmd = ['yt-dlp', '--no-warnings', '--no-playlist', '--embed-metadata']
+              
+              if FMT == 'mp3':
+                  cmd.extend(['-x', '--audio-format', 'mp3', '--audio-quality', QUAL.replace('kbps','')])
               else:
-                  h = QUAL.replace('p', '')
-                  cmd.extend(['-f', f'bestvideo[height<={h}]+bestaudio/best[height<={h}]/best'])
-              cmd.extend(['--merge-output-format', 'mp4'])
-          
-          cmd.extend(['-o', output_template, URL])
-          
-          print(f"⏳ Downloading...")
-          result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-          
-          if result.returncode != 0:
-              print(f"❌ Error: {result.stderr[:300]}")
-              sys.exit(1)
-          
-          # Find downloaded file
-          downloaded = None
-          for f in sorted(os.listdir(OUT_DIR), key=lambda x: os.path.getmtime(os.path.join(OUT_DIR, x)), reverse=True):
-              if f.endswith(f'.{FMT}') and not f.startswith('.'):
-                  downloaded = os.path.join(OUT_DIR, f)
-                  break
-          
-          if not downloaded:
-              print("❌ File not found after download")
-              sys.exit(1)
-          
-          size_mb = os.path.getsize(downloaded) / (1024*1024)
-          print(f"✅ Downloaded: {os.path.basename(downloaded)} ({size_mb:.1f} MB)")
-          
-          # Split if needed
-          if MAX_MB > 0 and size_mb > MAX_MB:
-              print(f"📦 Splitting ({size_mb:.1f}MB > {MAX_MB}MB)...")
-              fname = os.path.basename(downloaded)
-              parts_dir = f"{downloaded}_parts"
-              os.makedirs(parts_dir, exist_ok=True)
+                  if QUAL == 'best':
+                      cmd.extend(['-f', 'bestvideo+bestaudio/best'])
+                  else:
+                      cmd.extend(['-f', f'best[height<={QUAL.replace("p","")}]/best'])
+                  cmd.extend(['--merge-output-format', 'mp4'])
               
-              part_size = MAX_MB * 1024 * 1024
-              with open(downloaded, 'rb') as src:
-                  part_num = 0
-                  while True:
-                      chunk = src.read(part_size)
-                      if not chunk:
+              cmd.extend(['-o', output_template, URL])
+              
+              result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+              
+              if result.returncode == 0:
+                  for f in sorted(os.listdir(OUT_DIR), key=lambda x: os.path.getmtime(os.path.join(OUT_DIR, x)), reverse=True):
+                      if not f.startswith('.') and (f.endswith(f'.{FMT}') or f.endswith('.mkv') or f.endswith('.webm')):
+                          downloaded = os.path.join(OUT_DIR, f)
+                          size_mb = os.path.getsize(downloaded) / (1024*1024)
+                          print(f"✅ yt-dlp: {f} ({size_mb:.1f} MB)")
+                          success = True
                           break
-                      part_path = os.path.join(parts_dir, f"{fname}.part{part_num:03d}")
-                      with open(part_path, 'wb') as dst:
-                          dst.write(chunk)
-                      part_num += 1
-              
-              print(f"  ✅ Split into {part_num} parts in: {parts_dir}/")
-              # Create merge script
-              script_path = f"{downloaded}.merge.sh"
-              with open(script_path, 'w') as sf:
-                  sf.write(f"#!/bin/bash\n# Merge parts: cat {parts_dir}/{fname}.part* > {fname}\n")
-                  sf.write(f"cat \"{parts_dir}/{fname}.part\"* > \"{fname}\"\n")
-                  sf.write(f"echo '✅ Merged: {fname}'\n")
-              os.chmod(script_path, 0o755)
-              print(f"  📜 Merge script: {os.path.basename(script_path)}")
-              os.remove(downloaded)
-          
-          print("\n✅ ALL DONE!")
+              else:
+                  print(f"⚠️ yt-dlp failed: {result.stderr[:200]}")
+          except Exception as e:
+              print(f"⚠️ yt-dlp error: {str(e)[:150]}")
+
+          # --- METHOD 2: ytmp3 API (fallback) ---
+          if not success:
+              print("\n🔹 Trying ytmp3 API fallback...")
+              try:
+                  import requests
+                  
+                  s = requests.Session()
+                  s.headers.update({"User-Agent": "Mozilla/5.0", "Content-Type": "application/json"})
+                  
+                  try:
+                      s.get("https://media.ytmp3.gg/", timeout=10)
+                  except:
+                      pass
+                  
+                  pl = {
+                      "url": URL,
+                      "os": "linux",
+                      "output": {"type": "audio" if FMT=="mp3" else "video", "format": FMT},
+                  }
+                  if FMT == 'mp3':
+                      pl["audio"] = {"bitrate": QUAL.replace('kbps','') if 'kbps' in QUAL else '192'}
+                  else:
+                      pl["output"]["quality"] = QUAL.replace('p','') if 'p' in QUAL else '720'
+                  
+                  resp = s.post("https://hub.ytconvert.org/api/download", json=pl, timeout=30)
+                  resp.raise_for_status()
+                  d = resp.json()
+                  
+                  status_url = d.get('statusUrl')
+                  title = d.get('title', 'video')
+                  
+                  dl_url = None
+                  for _ in range(60):
+                      time.sleep(2)
+                      sr = s.get(status_url, timeout=15)
+                      sd = sr.json()
+                      if sd.get('status') == 'completed':
+                          dl_url = sd.get('downloadUrl')
+                          break
+                      elif sd.get('status') == 'failed':
+                          break
+                  
+                  if dl_url:
+                      clean_title = re.sub(r'[<>:"/\\|?*\'^-]', '', title)
+                      clean_title = re.sub(r'[^a-zA-Z0-9\s_-]', '', clean_title)
+                      clean_title = re.sub(r'\s+', '_', clean_title).strip('_')[:80]
+                      fname = f"{clean_title}_{v_id}_{QUAL}.{FMT}"
+                      fpath = os.path.join(OUT_DIR, fname)
+                      
+                      dl_resp = s.get(dl_url, timeout=600)
+                      with open(fpath, 'wb') as wf:
+                          wf.write(dl_resp.content)
+                      
+                      size_mb = os.path.getsize(fpath) / (1024*1024)
+                      print(f"✅ ytmp3: {fname} ({size_mb:.1f} MB)")
+                      downloaded = fpath
+                      success = True
+                  else:
+                      print("⚠️ ytmp3 conversion failed")
+              except Exception as e:
+                  print(f"⚠️ ytmp3 error: {str(e)[:150]}")
+
+          if not success:
+              print("\n❌ ALL METHODS FAILED")
+              sys.exit(1)
+
+          # Split if needed
+          if MAX_MB > 0:
+              size_mb = os.path.getsize(downloaded) / (1024*1024)
+              if size_mb > MAX_MB:
+                  print(f"\n📦 Splitting ({size_mb:.1f}MB > {MAX_MB}MB)...")
+                  fname = os.path.basename(downloaded)
+                  parts_dir = f"{downloaded}_parts"
+                  os.makedirs(parts_dir, exist_ok=True)
+                  
+                  part_size = MAX_MB * 1024 * 1024
+                  with open(downloaded, 'rb') as src:
+                      part_num = 0
+                      while chunk := src.read(part_size):
+                          part_path = os.path.join(parts_dir, f"{fname}.part{part_num:03d}")
+                          with open(part_path, 'wb') as dst:
+                              dst.write(chunk)
+                          part_num += 1
+                  
+                  # Merge script
+                  script_path = f"{downloaded}.merge.sh"
+                  with open(script_path, 'w') as sf:
+                      sf.write(f'#!/bin/bash\ncat "{parts_dir}/{fname}.part"* > "{fname}" && echo "✅ Merged!"\n')
+                  os.chmod(script_path, 0o755)
+                  
+                  print(f"  ✅ {part_num} parts + merge script")
+                  os.remove(downloaded)
+
+          print("\n✅ DONE!")
           EOF
         env:
           PYTHONUNBUFFERED: 1
@@ -158,7 +213,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ github.event.inputs.output_folder }}/"
-          
-          FILE_COUNT=$(find "${{ github.event.inputs.output_folder }}" -type f | wc -l)
-          git commit -m "📥 Downloaded YouTube video ($FILE_COUNT file(s)) [skip ci]" || echo "Nothing to commit"
+          git commit -m "📥 Downloaded YouTube video [skip ci]" || echo "Nothing to commit"
           git push
