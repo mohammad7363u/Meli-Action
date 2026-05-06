@@ -31,11 +31,6 @@ on:
         required: false
         type: number
         default: 0
-      embed_metadata:
-        description: '🏷️ افزودن متادیتا و تصویر به فایل'
-        required: false
-        type: boolean
-        default: true
 
 jobs:
   download:
@@ -59,20 +54,14 @@ jobs:
           URLS: ${{ github.event.inputs.video_urls }}
           QUALITY: ${{ github.event.inputs.quality }}
           FORMAT_TYPE: ${{ github.event.inputs.output_format }}
-          EMBED_DATA: ${{ github.event.inputs.embed_metadata }}
-          CREATE_ZIP: ${{ github.event.inputs.create_zip }}
         run: |
           set -e
           
-          # ایجاد پوشه با timestamp
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          OUTPUT_DIR="downloads/${TIMESTAMP}"
-          mkdir -p "$OUTPUT_DIR"
+          # پوشه موقت برای دانلود
+          TEMP_DIR="downloads/temp_$(date +%Y%m%d_%H%M%S)"
+          mkdir -p "$TEMP_DIR"
           
-          echo "📁 Output directory: $OUTPUT_DIR"
-          echo "🎯 Format type: $FORMAT_TYPE"
-          echo "⚡ Requested quality: $QUALITY"
-          echo "📦 Create ZIP: $CREATE_ZIP"
+          echo "📁 Temp directory: $TEMP_DIR"
           
           # 🎯 تعیین فرمت خروجی
           FORMAT_STRING=""
@@ -83,16 +72,13 @@ jobs:
               echo "🎵 حالت: فقط صدا"
               FORMAT_STRING="bestaudio/best"
               POST_PROCESSOR="--extract-audio --audio-format mp3 --audio-quality 0"
-              OUTPUT_EXT="mp3"
               ;;
             *"بهترین کیفیت"*)
               echo "📹 حالت: بهترین کیفیت خودکار"
               FORMAT_STRING="bestvideo+bestaudio/best"
               POST_PROCESSOR="--merge-output-format mp4"
-              OUTPUT_EXT="mp4"
               ;;
             *)
-              # اعتبارسنجی کیفیت
               if [[ "$QUALITY" =~ ^[0-9]+$ ]] && [ "$QUALITY" -ge 144 ]; then
                 echo "🎬 حالت: ویدیو با کیفیت ${QUALITY}p"
                 FORMAT_STRING="bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]/best"
@@ -101,13 +87,11 @@ jobs:
                 FORMAT_STRING="bestvideo+bestaudio/best"
               fi
               POST_PROCESSOR="--merge-output-format mp4"
-              OUTPUT_EXT="mp4"
               ;;
           esac
           
           echo "🔍 فرمت نهایی: $FORMAT_STRING"
           
-          # آپشن‌های مشترک
           COMMON_OPTS="--no-playlist \
             --retries 10 \
             --fragment-retries 10 \
@@ -120,35 +104,17 @@ jobs:
             --socket-timeout 30 \
             --no-warnings"
           
-          # آپشن‌های متادیتا
-          METADATA_OPTS=""
-          if [ "$EMBED_DATA" = "true" ]; then
-            METADATA_OPTS="--write-info-json \
-              --write-thumbnail \
-              --embed-metadata \
-              --embed-thumbnail"
-          fi
-          
           # 📥 پردازش لینک‌ها
           IFS=',' read -ra URL_ARRAY <<< "$URLS"
           TOTAL_URLS=${#URL_ARRAY[@]}
           CURRENT=0
           
           echo "📋 تعداد لینک‌ها: $TOTAL_URLS"
-          echo "🔗 لینک‌ها:"
-          for url in "${URL_ARRAY[@]}"; do
-            echo "  - $url"
-          done
           
-          # فایل لاگ برای اطلاعات
-          LOG_FILE="$OUTPUT_DIR/download_log.txt"
+          LOG_FILE="$TEMP_DIR/download_log.txt"
           echo "📥 گزارش دانلود - $(date '+%Y-%m-%d %H:%M:%S')" > "$LOG_FILE"
-          echo "═══════════════════════════════" >> "$LOG_FILE"
-          echo "" >> "$LOG_FILE"
           
-          # دانلود هر لینک
           for url in "${URL_ARRAY[@]}"; do
-            # پاکسازی URL
             CLEAN_URL=$(echo "$url" | sed 's/[[:space:]]*//g' | sed 's/\?si=.*$//')
             
             if [ -z "$CLEAN_URL" ]; then
@@ -161,253 +127,142 @@ jobs:
             echo "═══════════════════════════════════════"
             echo "📥 دانلود $CURRENT از $TOTAL_URLS"
             echo "🔗 $CLEAN_URL"
-            echo "═══════════════════════════════════════"
             
             echo "📥 شماره $CURRENT - $CLEAN_URL" >> "$LOG_FILE"
             
-            # دانلود
             if yt-dlp \
               --format "$FORMAT_STRING" \
               $POST_PROCESSOR \
-              --output "$OUTPUT_DIR/%(title).150s [%(id)s].%(ext)s" \
+              --output "$TEMP_DIR/%(title).150s [%(id)s].%(ext)s" \
               $COMMON_OPTS \
-              $METADATA_OPTS \
               "$CLEAN_URL" 2>&1 | tee -a "$LOG_FILE"; then
-              
               echo "✅ دانلود $CURRENT موفق" >> "$LOG_FILE"
-              echo "✅ دانلود $CURRENT موفق"
             else
               echo "❌ خطا در دانلود $CURRENT" >> "$LOG_FILE"
-              echo "❌ خطا در دانلود $CURRENT - ادامه به لینک بعدی..."
             fi
             
             echo "" >> "$LOG_FILE"
-            
-            # وقفه کوتاه بین دانلودها
             sleep 2
           done
           
           echo ""
-          echo "═══════════════════════════════════"
           echo "✅ دانلود همه لینک‌ها به پایان رسید"
           
-          # لیست فایل‌های دانلود شده
-          echo "" >> "$LOG_FILE"
-          echo "📋 فایل‌های نهایی:" >> "$LOG_FILE"
-          echo "═══════════════════════════════════" >> "$LOG_FILE"
-          ls -lah "$OUTPUT_DIR" | grep -v "^d" | grep -v "^total" >> "$LOG_FILE"
+          SUCCESS_COUNT=$(find "$TEMP_DIR" -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" -o -name "*.webm" \) | wc -l)
           
           echo "📋 فایل‌های دانلود شده:"
-          ls -lah "$OUTPUT_DIR"/*.{mp4,mp3,mkv,webm} 2>/dev/null || echo "  (در حال بررسی...)"
+          ls -lah "$TEMP_DIR"
           
-          # شمارش فایل‌های موفق
-          SUCCESS_COUNT=$(find "$OUTPUT_DIR" -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" -o -name "*.webm" \) | wc -l)
-          echo "" >> "$LOG_FILE"
-          echo "📊 تعداد فایل‌های موفق: $SUCCESS_COUNT از $TOTAL_URLS" >> "$LOG_FILE"
-          
-          # ذخیره مسیر برای مراحل بعد
-          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+          echo "temp_dir=$TEMP_DIR" >> $GITHUB_OUTPUT
           echo "success_count=$SUCCESS_COUNT" >> $GITHUB_OUTPUT
+          echo "total_count=$TOTAL_URLS" >> $GITHUB_OUTPUT
 
-      - name: 📦 ایجاد فایل ZIP
+      - name: 📦 زیپ و انتقال به پوشه نهایی
         if: ${{ github.event.inputs.create_zip == 'true' }}
         run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          TEMP_DIR="${{ steps.download.outputs.temp_dir }}"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          ZIP_NAME="youtube_downloads_${TIMESTAMP}.zip"
-          ZIP_PATH="$OUTPUT_DIR/$ZIP_NAME"
           
-          cd "$OUTPUT_DIR"
+          # پوشه مقصد برای ZIP
+          ZIP_FOLDER="downloads/zips/${TIMESTAMP}"
+          mkdir -p "$ZIP_FOLDER"
+          
+          ZIP_NAME="youtube_downloads_${TIMESTAMP}.zip"
+          ZIP_PATH="$ZIP_FOLDER/$ZIP_NAME"
+          
+          cd "$TEMP_DIR"
           
           echo "📦 در حال ایجاد فایل ZIP..."
           
-          # لیست فایل‌هایی که قراره زیپ بشن
-          echo "📋 فایل‌های داخل ZIP:"
-          find . -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" -o -name "*.webm" -o -name "*.json" -o -name "*.jpg" -o -name "*.png" \) -exec basename {} \; | head -20
+          zip -r "$ZIP_NAME" . -x "*.part" "*.ytdl" 2>/dev/null || true
           
-          # ایجاد ZIP
-          zip -r -q "$ZIP_NAME" \
-            *.mp4 *.mp3 *.mkv *.webm \
-            *.json *.jpg *.png \
-            download_log.txt \
-            2>/dev/null || true
+          # انتقال به پوشه مقصد
+          mv "$ZIP_NAME" "../zips/${TIMESTAMP}/"
           
-          ZIP_SIZE=$(du -h "$ZIP_NAME" | cut -f1)
-          echo ""
-          echo "✅ فایل ZIP ایجاد شد: $ZIP_NAME ($ZIP_SIZE)"
+          ZIP_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
+          echo "✅ فایل ZIP ایجاد شد: downloads/zips/${TIMESTAMP}/$ZIP_NAME ($ZIP_SIZE)"
           
-          # محاسبه تعداد فایل‌های داخل ZIP
-          FILES_IN_ZIP=$(unzip -l "$ZIP_NAME" | tail -1 | awk '{print $2}')
-          echo "📊 تعداد فایل‌های داخل ZIP: $FILES_IN_ZIP"
+          # کپی فایل‌های اطلاعات هم به پوشه ZIP
+          cp download_log.txt "../zips/${TIMESTAMP}/" 2>/dev/null || true
           
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
-          echo "zip_path=$ZIP_PATH" >> $GITHUB_OUTPUT
+          # ایجاد فایل اطلاعات در پوشه ZIP
+          cat > "../zips/${TIMESTAMP}/INFO.txt" << EOF
+          📥 دانلود گروهی
+          📅 تاریخ: $(date '+%Y-%m-%d %H:%M:%S')
+          📊 تعداد فایل: ${{ steps.download.outputs.success_count }}
+          📦 نوع: ${{ github.event.inputs.output_format }}
+          ⚡ کیفیت: ${{ github.event.inputs.quality }}
+          EOF
+          
+          echo "zip_folder=zips/${TIMESTAMP}" >> $GITHUB_OUTPUT
 
-      - name: ✂️ تقسیم فایل‌های حجیم
-        if: ${{ github.event.inputs.split_size > 0 }}
+      - name: ✂️ تقسیم ZIP اگر لازم بود
+        if: ${{ github.event.inputs.split_size > 0 && github.event.inputs.create_zip == 'true' }}
         run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          ZIP_FOLDER="downloads/${{ steps.download.outputs.zip_folder }}"
           SPLIT_SIZE=${{ github.event.inputs.split_size }}
-          cd "$OUTPUT_DIR"
           
-          echo "✂️ بررسی فایل‌ها برای تقسیم (حداکثر ${SPLIT_SIZE}MB)..."
+          cd "$ZIP_FOLDER"
           
-          for file in *.{mp4,mp3,mkv,webm,zip}; do
+          for file in *.zip; do
             if [ -f "$file" ]; then
               SIZE_MB=$(du -m "$file" | cut -f1)
-              echo "  📦 $file: ${SIZE_MB}MB"
-              
               if [ $SIZE_MB -gt $SPLIT_SIZE ]; then
-                echo "    ✂️ در حال تقسیم..."
+                echo "✂️ در حال تقسیم $file ($SIZE_MB MB)..."
                 split -b ${SPLIT_SIZE}M -d "$file" "${file}.part"
                 rm "$file"
                 
-                # ساخت اسکریپت ترکیب مجدد
-                BASENAME=$(basename "$file")
-                cat > "reassemble_${BASENAME}.sh" << EOF
+                cat > "reassemble.sh" << EOF
           #!/bin/bash
-          # اسکریپت ترکیب فایل‌های تقسیم شده
-          cat ${BASENAME}.part* > "${BASENAME}"
-          echo "✅ فایل ترکیب شد: ${BASENAME}"
-          # حذف بخش‌ها بعد از ترکیب موفق
-          read -p "🗑️ حذف فایل‌های بخش؟ (y/n) " -n 1 -r
-          echo
-          if [[ \$REPLY =~ ^[Yy]$ ]]; then
-              rm ${BASENAME}.part*
-              echo "🗑️ فایل‌های بخش حذف شدند"
-          fi
+          cat ${file}.part* > "${file}"
+          echo "✅ فایل ترکیب شد: ${file}"
+          rm ${file}.part*
           EOF
-                chmod +x "reassemble_${BASENAME}.sh"
-                echo "    ✅ فایل تقسیم شد ($(ls ${BASENAME}.part* | wc -l) بخش)"
+                chmod +x "reassemble.sh"
+                echo "✅ فایل تقسیم شد ($(ls ${file}.part* | wc -l) بخش)"
               fi
             fi
           done
 
-      - name: 🔐 ایجاد چکسام
+      - name: 🧹 پاکسازی پوشه موقت
+        if: always()
         run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
-          cd "$OUTPUT_DIR"
-          
-          echo "🔐 محاسبه چکسام‌ها..."
-          
-          # ایجاد فایل‌های چکسام برای همه فایل‌ها
-          md5sum *.{mp4,mp3,mkv,webm,zip} *.part* 2>/dev/null > checksums.md5 || true
-          sha256sum *.{mp4,mp3,mkv,webm,zip} *.part* 2>/dev/null > checksums.sha256 || true
-          
-          echo "✅ چکسام‌ها ایجاد شدند"
-          
-          # نمایش خلاصه
-          echo "📋 MD5 checksums:"
-          cat checksums.md5 2>/dev/null || echo "  (بدون چکسام)"
-
-      - name: 📊 ایجاد فایل اطلاعات
-        run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
-          SUCCESS_COUNT="${{ steps.download.outputs.success_count }}"
-          
-          cat > "$OUTPUT_DIR/INFO.txt" << EOF
-          ╔══════════════════════════════════╗
-          ║     📥 اطلاعات دانلود گروهی     ║
-          ╠══════════════════════════════════╣
-          📅 تاریخ: $(date '+%Y-%m-%d %H:%M:%S')
-          📦 نوع: ${{ github.event.inputs.output_format }}
-          ⚡ کیفیت: ${{ github.event.inputs.quality }}
-          📊 تعداد موفق: ${SUCCESS_COUNT}
-          🔧 ابزار: yt-dlp + ffmpeg
-          💻 سیستم: GitHub Actions
-          ✅ وضعیت: کامل شده
-          
-          📋 لینک‌های دانلود شده:
-          EOF
-          
-          # اضافه کردن لینک‌ها
-          IFS=',' read -ra URL_ARRAY <<< "${{ github.event.inputs.video_urls }}"
-          for url in "${URL_ARRAY[@]}"; do
-            echo "  • $(echo "$url" | sed 's/[[:space:]]*//g')" >> "$OUTPUT_DIR/INFO.txt"
-          done
-          
-          # اضافه کردن اطلاعات ZIP
-          if [ "${{ github.event.inputs.create_zip }}" = "true" ] && [ -n "${{ steps.download.outputs.zip_name }}" ]; then
-            echo "" >> "$OUTPUT_DIR/INFO.txt"
-            echo "📦 فایل ZIP: ${{ steps.download.outputs.zip_name }}" >> "$OUTPUT_DIR/INFO.txt"
+          TEMP_DIR="${{ steps.download.outputs.temp_dir }}"
+          if [ -d "$TEMP_DIR" ]; then
+            rm -rf "$TEMP_DIR"
+            echo "🧹 پوشه موقت پاک شد"
           fi
-          
-          # محاسبه حجم کل
-          TOTAL_SIZE=$(du -sh "$OUTPUT_DIR" | cut -f1)
-          echo "💾 حجم کل: $TOTAL_SIZE" >> "$OUTPUT_DIR/INFO.txt"
 
-      - name: 📦 ذخیره در مخزن
+      - name: 💾 ذخیره در پروژه
         run: |
           set -e
           
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
+          git pull --rebase
           
-          echo "💾 آماده‌سازی برای commit..."
+          # فقط پوشه zips رو اضافه کن
+          git add downloads/zips/
           
-          # اضافه کردن فایل‌های غیرحجیم
-          git add "$OUTPUT_DIR/INFO.txt"
-          git add "$OUTPUT_DIR/download_log.txt"
-          git add "$OUTPUT_DIR/checksums."*
-          git add "$OUTPUT_DIR/"*.json 2>/dev/null || true
-          git add "$OUTPUT_DIR/"*.jpg 2>/dev/null || true
-          git add "$OUTPUT_DIR/"*.png 2>/dev/null || true
-          git add "$OUTPUT_DIR/"*.sh 2>/dev/null || true
-          
-          # فایل‌های کوچک (<100MB) هم اضافه شوند
-          find "$OUTPUT_DIR" -type f -size -100M \( -name "*.mp4" -o -name "*.mp3" -o -name "*.mkv" -o -name "*.zip" \) -exec git add {} \; 2>/dev/null || true
-          
-          # commit
-          COMMIT_MSG="📥 دانلود گروهی - $(date '+%Y-%m-%d %H:%M') [skip ci]"
+          COMMIT_MSG="📦 ZIP جدید - $(date '+%Y-%m-%d %H:%M') [skip ci]"
           if git diff --cached --quiet; then
-            echo "⏭️ فایل‌های بزرگ در Releases ذخیره می‌شوند"
+            echo "⏭️ چیزی برای commit وجود ندارد"
           else
             git commit -m "$COMMIT_MSG"
             git push
-            echo "✅ فایل‌های کوچک در مخزن ذخیره شدند"
+            echo "✅ فایل‌های ZIP در پروژه ذخیره شدند"
           fi
-
-      - name: 📤 آپلود به Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: download-${{ github.run_id }}-${{ github.run_attempt }}
-          name: '📥 دانلود گروهی شماره ${{ github.run_number }}'
-          body_path: '${{ steps.download.outputs.output_dir }}/INFO.txt'
-          files: |
-            ${{ steps.download.outputs.output_dir }}/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ✅ گزارش نهایی
         run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
-          SUCCESS_COUNT="${{ steps.download.outputs.success_count }}"
-          
           echo "
           ╔══════════════════════════════════════╗
-          ║   ✅ دانلود گروهی با موفقیت انجام شد ║
+          ║   ✅ دانلود و زیپ با موفقیت انجام شد ║
           ╠══════════════════════════════════════╣
-          ║ 📁 مسیر: $OUTPUT_DIR
-          ║ 📊 تعداد فایل‌های موفق: $SUCCESS_COUNT
-          ║ 📦 نوع: ${{ github.event.inputs.output_format }}
+          ║ 📁 ZIP در: downloads/${{ steps.download.outputs.zip_folder }}/
+          ║ 📊 فایل‌ها: ${{ steps.download.outputs.success_count }} عدد
           ╚══════════════════════════════════════╝
           "
           
-          if [ "${{ github.event.inputs.create_zip }}" = "true" ]; then
-            echo "📦 فایل ZIP در Releases قابل دانلود است"
-          fi
-          
-          echo ""
-          echo "📋 لینک Releases: ${{ github.server_url }}/${{ github.repository }}/releases/tag/download-${{ github.run_id }}-${{ github.run_attempt }}"
-
-      - name: 🧹 پاکسازی فایل‌های موقت
-        if: always()
-        run: |
-          OUTPUT_DIR="${{ steps.download.outputs.output_dir }}"
-          if [ -d "$OUTPUT_DIR" ]; then
-            find "$OUTPUT_DIR" -name "*.part" -delete 2>/dev/null || true
-            find "$OUTPUT_DIR" -name "*.ytdl" -delete 2>/dev/null || true
-            echo "🧹 پاکسازی انجام شد"
-          fi
+          echo "🔗 مسیر در پروژه: ${{ github.server_url }}/${{ github.repository }}/tree/main/downloads/${{ steps.download.outputs.zip_folder }}"
